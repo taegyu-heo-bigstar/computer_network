@@ -9,20 +9,27 @@
 
 #define BUF_SIZE 100
 #define MAX_CLNT 256
+#define NAME_SIZE 20	// **추가** 클라이언트가 가질 수 있는 이름의 최대 길이
 
 void * handle_clnt(void * arg);
 void send_msg(char * msg, int len);
 void error_handling(char * msg);
+typedef struct client_information{
+	int sock;	// **추가** 클라이언트과 연결된 소켓의 파일 디스크립터(클라이언트 구분용)
+	char name[NAME_SIZE];	// **추가 클라이언트의 이름**
+} clnt_info;
 
 int clnt_cnt=0;
 int clnt_socks[MAX_CLNT];
 pthread_mutex_t mutx;
+clnt_info clnts[MAX_CLNT];	// **추가** 클라이언트의 정보를 저장하는 배열
 
 int main(int argc, char *argv[])
 {
 	int serv_sock, clnt_sock;
 	struct sockaddr_in serv_adr, clnt_adr;
 	int clnt_adr_sz;
+	char clnt_name[NAME_SIZE];
 	pthread_t t_id;
 	if(argc!=2) {
 		printf("Usage : %s <port>\n", argv[0]);
@@ -48,17 +55,39 @@ int main(int argc, char *argv[])
 		clnt_sock=accept(serv_sock, (struct sockaddr*)&clnt_adr,&clnt_adr_sz);
 		
 		pthread_mutex_lock(&mutx);
-		clnt_socks[clnt_cnt++]=clnt_sock;
+		handle_connectionInfo(clnt_sock);
 		pthread_mutex_unlock(&mutx);
 	
 		pthread_create(&t_id, NULL, handle_clnt, (void*)&clnt_sock);
 		pthread_detach(t_id);
 		printf("Connected client IP: %s \n", inet_ntoa(clnt_adr.sin_addr));
 	}
+
+
+
 	close(serv_sock);
 	return 0;
 }
-	
+// 추가 함수
+void * handle_connectionInfo(int sock){
+		int str_len = 0;
+		char name[NAME_SIZE];
+
+		clnt_socks[clnt_cnt]=sock;
+		char text[] = "please input your name(max length 20) :";
+		send_msg_unicast(text, sizeof(text), sock);
+
+		if((str_len = read(sock, name, sizeof(name))) <= 0)
+    		return NULL;
+       	
+		name[str_len] = 0;
+		strncpy(clnts[clnt_cnt].name, name, NAME_SIZE);
+		clnt_cnt++;
+		
+		char text[] = strcat("your name is : ", name);
+		send_msg_unicast(text, sizeof(text), sock);
+}
+void * 
 void * handle_clnt(void * arg)
 {
 	int clnt_sock=*((int*)arg);
@@ -94,6 +123,12 @@ void send_msg(char * msg, int len)   // send to all
 	pthread_mutex_lock(&mutx);
 	for(i=0; i<clnt_cnt; i++)
 		write(clnt_socks[i], msg, len);
+	pthread_mutex_unlock(&mutx);
+}
+void send_msg_unicast(char * msg, int len, int sock)   // send to all
+{
+	pthread_mutex_lock(&mutx);
+	write(clnt_socks[sock], msg, len);
 	pthread_mutex_unlock(&mutx);
 }
 void error_handling(char * msg)
