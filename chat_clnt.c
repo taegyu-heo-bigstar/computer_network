@@ -40,9 +40,11 @@ int main(int argc, char *argv[])
 		error_handling("connect() error");
 	
 	while(1){
+		printf("test_132");
 		if (!(name_invalidity_check(sock))) break;	// **add** negative logic
 	}
-		
+	
+	printf("Tste123123");
 	pthread_create(&snd_thread, NULL, send_msg, (void*)&sock);
 	pthread_create(&rcv_thread, NULL, recv_msg, (void*)&sock);
 	pthread_join(snd_thread, &thread_return);
@@ -68,8 +70,9 @@ int name_invalidity_check(int sock){
     } else if(strcmp(check_msg, "DUP") == 0) {
         // 이름 중복
         printf("이미 사용 중인 이름입니다. 새 이름을 입력하세요: ");
-        read(0, name, NAME_SIZE);
+        fgets(name, NAME_SIZE-3, stdin);
         name[strcspn(name, "\n")] = 0; // 개행 제거
+		sprintf(name, "[%s]", name);
 		return 1;
     } else {
         write(1, check_msg, check_len);
