@@ -39,14 +39,16 @@ int main(int argc, char *argv[])
 	if(connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr))==-1)
 		error_handling("connect() error");
 	
+	printf("clnt start access invalidity checkllop");
 	while(1){
-		printf("test_132");
+		printf("clnt in check loop");
 		if (!(name_invalidity_check(sock))) break;	// **add** negative logic
 	}
 	
-	printf("Tste123123");
+	printf("clnt out loop");
 	pthread_create(&snd_thread, NULL, send_msg, (void*)&sock);
 	pthread_create(&rcv_thread, NULL, recv_msg, (void*)&sock);
+	printf("clnt sucees make thread");
 	pthread_join(snd_thread, &thread_return);
 	pthread_join(rcv_thread, &thread_return);
 	close(sock);  
@@ -67,14 +69,21 @@ int name_invalidity_check(int sock){
     
     if(strcmp(check_msg, "OK") == 0) {
         return 0;
-    } else if(strcmp(check_msg, "DUP") == 0) {
-        // 이름 중복
-        printf("이미 사용 중인 이름입니다. 새 이름을 입력하세요: ");
-        fgets(name, NAME_SIZE-3, stdin);
-        name[strcspn(name, "\n")] = 0; // 개행 제거
-		sprintf(name, "[%s]", name);
+    }else if(strcmp(check_msg, "DUP") == 0) {
+		// 이름 중복
+		printf("이미 사용 중인 이름입니다. 새 이름을 입력하세요: ");
+		char new_name[NAME_SIZE]; 
+		fgets(new_name, sizeof(new_name), stdin);
+		new_name[strcspn(new_name, "\n")] = 0;
+
+		if(strlen(new_name) == 0) {
+			printf("이름을 입력하세요.\n");
+			return 1;
+		}
+
+		snprintf(name, sizeof(name), "[%.*s]", NAME_SIZE - 3, new_name);
 		return 1;
-    } else {
+	}else {
         write(1, check_msg, check_len);
         return 1;
     }

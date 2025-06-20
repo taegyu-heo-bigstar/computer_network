@@ -57,11 +57,12 @@ int main(int argc, char *argv[])
 	
 	while(1)
 	{
+		printf("server can access in loop");
 		clnt_adr_sz=sizeof(clnt_adr);
 		clnt_sock=accept(serv_sock, (struct sockaddr*)&clnt_adr, &clnt_adr_sz);
 		p_clnt_sock = malloc(sizeof(int));
 		*p_clnt_sock = clnt_sock;
-
+		printf("server success accept");
 		pthread_mutex_lock(&mutx);
 		handle_connectionInfo(*p_clnt_sock);
 		pthread_mutex_unlock(&mutx);
@@ -83,6 +84,7 @@ void * handle_connectionInfo(int sock){
 		clnt_socks[clnt_cnt]=sock;
 		int flag = 1;
 		while (flag){
+			printf("server can access in set info loop by flag");
 			if((str_len = read(sock, name, sizeof(name))) <= 0){
 				send_msg_unicast("unknown error", 5, sock);
     			return NULL;
