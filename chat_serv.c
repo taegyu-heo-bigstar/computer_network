@@ -35,6 +35,7 @@ int main(int argc, char *argv[])
 	struct sockaddr_in serv_adr, clnt_adr;
 	int clnt_adr_sz;
 	char clnt_name[NAME_SIZE];
+	int* p_clnt_sock;
 	pthread_t t_id;
 	if(argc!=2) {
 		printf("Usage : %s <port>\n", argv[0]);
@@ -58,12 +59,14 @@ int main(int argc, char *argv[])
 	{
 		clnt_adr_sz=sizeof(clnt_adr);
 		clnt_sock=accept(serv_sock, (struct sockaddr*)&clnt_adr, &clnt_adr_sz);
-		
+		p_clnt_sock = malloc(sizeof(int));
+		*p_clnt_sock = clnt_sock;
+
 		pthread_mutex_lock(&mutx);
-		handle_connectionInfo(clnt_sock);
+		handle_connectionInfo(*p_clnt_sock);
 		pthread_mutex_unlock(&mutx);
 	
-		pthread_create(&t_id, NULL, handle_clnt_extend, (void*)&clnt_sock);
+		pthread_create(&t_id, NULL, handle_clnt_extend, (void*)p_clnt_sock);
 		pthread_detach(t_id);
 		printf("Connected client IP: %s \n", inet_ntoa(clnt_adr.sin_addr));
 		printf("name: %s \n", clnt_name);
@@ -156,6 +159,7 @@ void * handle_clnt_extend(void * arg){
 	clnt_cnt--;
 	pthread_mutex_unlock(&mutx);
 	close(clnt_sock);
+	free(arg);
 	return NULL;
 }
 void * handle_clnt(void * arg)
