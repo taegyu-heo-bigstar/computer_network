@@ -14,6 +14,11 @@
 void * handle_clnt(void * arg);
 void send_msg(char * msg, int len);
 void error_handling(char * msg);
+
+void * handle_clnt_extend(void * arg);
+void * handle_connectionInfo(int sock);
+void send_msg_unicast(char * msg, int len, int sock);
+
 typedef struct client_information{
 	int sock;	// **추가** 클라이언트과 연결된 소켓의 파일 디스크립터(클라이언트 구분용)
 	char name[NAME_SIZE];	// **추가 클라이언트의 이름**
@@ -52,18 +57,17 @@ int main(int argc, char *argv[])
 	while(1)
 	{
 		clnt_adr_sz=sizeof(clnt_adr);
-		clnt_sock=accept(serv_sock, (struct sockaddr*)&clnt_adr,&clnt_adr_sz);
+		clnt_sock=accept(serv_sock, (struct sockaddr*)&clnt_adr, &clnt_adr_sz);
 		
 		pthread_mutex_lock(&mutx);
 		handle_connectionInfo(clnt_sock);
 		pthread_mutex_unlock(&mutx);
 	
-		pthread_create(&t_id, NULL, handle_clnt, (void*)&clnt_sock);
+		pthread_create(&t_id, NULL, handle_clnt_extend, (void*)&clnt_sock);
 		pthread_detach(t_id);
 		printf("Connected client IP: %s \n", inet_ntoa(clnt_adr.sin_addr));
+		printf("name: %s \n", clnt_name);
 	}
-
-
 
 	close(serv_sock);
 	return 0;
@@ -74,26 +78,85 @@ void * handle_connectionInfo(int sock){
 		char name[NAME_SIZE];
 
 		clnt_socks[clnt_cnt]=sock;
-		char text[] = "please input your name(max length 20) :";
-		send_msg_unicast(text, sizeof(text), sock);
+		int flag = 1;
+		while (flag){
+			if((str_len = read(sock, name, sizeof(name))) <= 0){
+				send_msg_unicast("unknown error", 5, sock);
+    			return NULL;
+			}
+			name[str_len]=0;
 
-		if((str_len = read(sock, name, sizeof(name))) <= 0)
-    		return NULL;
-       	
-		name[str_len] = 0;
+			for (int i = 0; i < clnt_cnt; i++){
+				 if (strcmp(clnts[i].name, name) == 0) {
+					send_msg_unicast("DUP", 3, sock);
+					flag++; break;
+				}
+			}
+			flag--;
+		}
+	
 		strncpy(clnts[clnt_cnt].name, name, NAME_SIZE);
+		clnts[clnt_cnt].name[str_len] = '\0';
 		clnt_cnt++;
 		
-		char text[] = strcat("your name is : ", name);
-		send_msg_unicast(text, sizeof(text), sock);
+		send_msg_unicast("OK", 2, sock);
 }
+//추가로 만든 함수
 void * handle_clnt_extend(void * arg){
 	int clnt_sock=*((int*)arg);
 	int str_len=0, i;
 	char msg[BUF_SIZE];
+	char name[NAME_SIZE];
+	char * space_ptr = strchr(msg, ' ');
 	
-	if ((str_len=read(clnt_sock, msg, sizeof(msg)))!=0)
-		send_msg(msg, str_len);
+	while ((str_len=read(clnt_sock, msg, sizeof(msg)))!=0){
+		if (msg[0] != '@') send_msg(msg, str_len);	//만약 @안쓰면 브로드 캐스트
+		else{									//@를 썼다면, name과 msg 분리
+			space_ptr = strchr(msg, ' ');
+			if (space_ptr == NULL){
+				strcpy(name, msg + 1);
+			}
+			else{
+				size_t name_len = space_ptr - msg;
+				str_len -= name_len;
+
+				strncpy(name, msg, name_len);
+				name[name_len] = '\0';
+
+				strncpy(msg, msg+name_len, str_len);
+			}
+		}
+
+		if (name == "all" || name == "ALL"){	//만약 name이 all이면 브로드캐스트
+			send_msg(msg, str_len);
+		}
+		else{
+			int dest;
+			for (int i = 0; i < clnt_cnt; i++){
+				if (clnts[i].name == name) {dest = clnts[i].sock; break;}
+			}
+			send_msg_unicast(msg, str_len, dest);	//만약 name이 특정 이름이면 clnt에게 unicast
+		}
+	}
+	pthread_mutex_lock(&mutx);
+	for(i=0; i<clnt_cnt; i++)   // remove disconnected client
+	{
+		if(clnt_sock==clnt_socks[i])
+		{
+			while(i <clnt_cnt-1)
+			{
+				clnt_socks[i]=clnt_socks[i+1];
+				  i++;
+
+			}
+
+			break;
+		}
+	}
+	clnt_cnt--;
+	pthread_mutex_unlock(&mutx);
+	close(clnt_sock);
+	return NULL;
 }
 void * handle_clnt(void * arg)
 {
@@ -132,10 +195,10 @@ void send_msg(char * msg, int len)   // send to all
 		write(clnt_socks[i], msg, len);
 	pthread_mutex_unlock(&mutx);
 }
-void send_msg_unicast(char * msg, int len, int sock)   // send to all
+void send_msg_unicast(char * msg, int len, int sock)   // send to some one
 {
 	pthread_mutex_lock(&mutx);
-	write(clnt_socks[sock], msg, len);
+	write(sock, msg, len);
 	pthread_mutex_unlock(&mutx);
 }
 void error_handling(char * msg)

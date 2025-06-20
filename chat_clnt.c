@@ -12,6 +12,7 @@
 void * send_msg(void * arg);
 void * recv_msg(void * arg);
 void error_handling(char * msg);
+int name_invalidity_check(int sock);
 	
 char name[NAME_SIZE]="[DEFAULT]";
 char msg[BUF_SIZE];
@@ -38,6 +39,10 @@ int main(int argc, char *argv[])
 	if(connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr))==-1)
 		error_handling("connect() error");
 	
+	while(1){
+		if (!(name_invalidity_check(sock))) break;	// **add** negative logic
+	}
+		
 	pthread_create(&snd_thread, NULL, send_msg, (void*)&sock);
 	pthread_create(&rcv_thread, NULL, recv_msg, (void*)&sock);
 	pthread_join(snd_thread, &thread_return);
@@ -45,7 +50,32 @@ int main(int argc, char *argv[])
 	close(sock);  
 	return 0;
 }
-	
+
+int name_invalidity_check(int sock){
+	write(sock, name, strlen(name));
+    
+    // 서버로부터 중복 여부 수신
+    char check_msg[BUF_SIZE];
+    int check_len = read(sock, check_msg, BUF_SIZE-1);
+    if(check_len <= 0) {
+        printf("diconnected from server...\n");
+        return 1;
+    }
+    check_msg[check_len] = 0;
+    
+    if(strcmp(check_msg, "OK") == 0) {
+        return 0;
+    } else if(strcmp(check_msg, "DUP") == 0) {
+        // 이름 중복
+        printf("이미 사용 중인 이름입니다. 새 이름을 입력하세요: ");
+        read(0, name, NAME_SIZE);
+        name[strcspn(name, "\n")] = 0; // 개행 제거
+		return 1;
+    } else {
+        write(1, check_msg, check_len);
+        return 1;
+    }
+}
 void * send_msg(void * arg)   // send thread main
 {
 	int sock=*((int*)arg);
