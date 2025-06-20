@@ -112,6 +112,8 @@ void * handle_clnt_extend(void * arg){
 	char name[NAME_SIZE];
 	char * space_ptr = strchr(msg, ' ');
 	
+	free(arg);
+	printf("test1 meg");
 	while ((str_len=read(clnt_sock, msg, sizeof(msg)))!=0){
 		if (msg[0] != '@') send_msg(msg, str_len);	//만약 @안쓰면 브로드 캐스트
 		else{									//@를 썼다면, name과 msg 분리
@@ -159,7 +161,6 @@ void * handle_clnt_extend(void * arg){
 	clnt_cnt--;
 	pthread_mutex_unlock(&mutx);
 	close(clnt_sock);
-	free(arg);
 	return NULL;
 }
 void * handle_clnt(void * arg)
