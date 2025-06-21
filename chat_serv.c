@@ -69,6 +69,7 @@ int main(int argc, char *argv[])
             close(clnt_sock);	//clnt_infos에 저장하지 않았으니 바로 통신 종료 가능
             goto CONTINUE_ACCEPT;	//오류시 다시 상단 accept으로 돌아감
         }
+        memmove(name_buf, name_buf+1, len-1);
         name_buf[len] = '\0';
 
         // 잠금 후 중복 검사
@@ -83,7 +84,7 @@ int main(int argc, char *argv[])
         if (!dup) {
             // 중복 없으면 배열에 저장
 			clnt_infos[clnt_cnt].sock = clnt_sock;
-            strncpy(clnt_infos[clnt_cnt].name, name_buf, NAME_SIZE);
+            strcpy(clnt_infos[clnt_cnt].name, name_buf);
             clnt_cnt++;
             pthread_mutex_unlock(&mutx);
 
