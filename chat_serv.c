@@ -131,7 +131,7 @@ void *handle_clnt_extend(void *arg) {
         strcpy(msg, space_ptr + 1);
         
         *space_ptr = ' ';
-        
+
         //printf("%s send a message", sender_name);
         write(1, "test1", 5);
         // 브로드캐스트 또는 유니캐스트 처리
@@ -159,6 +159,7 @@ void *handle_clnt_extend(void *arg) {
                 pthread_mutex_lock(&mutx);
                 for (int i = 0; i < clnt_cnt; i++) {
                     if (strcmp(clnt_infos[i].name, dest_name) == 0) {
+                        write(1, clnt_infos[i].name, strlen(clnt_infos[i].name));
                         dest_sock = clnt_infos[i].sock;
                         break;
                     }
