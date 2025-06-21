@@ -141,7 +141,7 @@ void *handle_clnt_extend(void *arg) {
             *delimeter = '\0';
 
 			strcpy(dest_name, msg+1);
-			snprintf(name_msg, NAME_SIZE+BUF_SIZE, "%s %s", sender_name, msg);
+			snprintf(name_msg, NAME_SIZE+BUF_SIZE, "%s %s", sender_name, delimeter+1);
 			str_len = strlen(name_msg);
 
             if (strcasecmp(dest_name, "all") == 0) {
