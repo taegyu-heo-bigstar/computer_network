@@ -109,62 +109,75 @@ int main(int argc, char *argv[])
 }
 
 // ---**여기서 부터 추가로 만든 함수**---
-void * handle_clnt_extend(void * arg){
-	int clnt_sock=*((int*)arg);
-	int str_len=0, i;
-	char msg[BUF_SIZE];
-	char name[NAME_SIZE];
-	char name_msg[NAME_SIZE + BUF_SIZE];
-	char * space_ptr;
-	
-	
-	while ((str_len=read(clnt_sock, name_msg, sizeof(name_msg)))!=0){
-		if (msg[0] != '@') send_msg_broadcast(name_msg, str_len);	//만약 @안쓰면 브로드 캐스트
-		else{									//@를 썼다면, name과 msg 분리
-			space_ptr = strchr(name_msg, ' ');
-			if (space_ptr == NULL){
-				strcpy(name, msg + 1);
-			}
-			else{
-				size_t name_len = space_ptr - name_msg;
-				str_len -= name_len;
+void *handle_clnt_extend(void *arg) {
+    int clnt_sock = *((int *)arg);
+    char name_msg[NAME_SIZE + BUF_SIZE];
+    char sender_name[NAME_SIZE];
+	char dest_name[NAME_SIZE];
+    char msg[BUF_SIZE];
+    int str_len;
 
-				strncpy(name, name_msg, name_len);
-				name[name_len] = '\0';
+    while ((str_len = read(clnt_sock, name_msg, sizeof(name_msg) - 1)) > 0) {
+        name_msg[str_len] = '\0';
 
-				strncpy(msg, msg+name_len, str_len);
-			}
-		}
+        // 전체 payload: "[sender] message"
+        char *space_ptr = strchr(name_msg, ' ');
+        if (space_ptr == NULL) continue;
+		*space_ptr = '\0';
 
-		if (name == "all" || name == "ALL"){	//만약 name이 all이면 브로드캐스트
-			send_msg_broadcast(msg, str_len);
-		}
-		else{
-			int dest;
-			for (int i = 0; i < clnt_cnt; i++){
-				if (clnt_infos[i].name == name) {dest = clnt_infos[i].sock; break;}
-			}
-			send_msg_unicast(msg, str_len, dest);	//만약 name이 특정 이름이면 clnt에게 unicast
-		}
-	}
-	pthread_mutex_lock(&mutx);
-	for(i=0; i<clnt_cnt; i++)   // remove disconnected client
-	{
-		if(clnt_sock==clnt_infos[i].sock)
-		{
-			while(i <clnt_cnt-1)
-			{
-				clnt_infos[i]=clnt_infos[i+1];
-				i++;
-			}
+        strcpy(sender_name, name_msg);
 
-			break;
-		}
-	}
-	clnt_cnt--;
-	pthread_mutex_unlock(&mutx);
-	close(clnt_sock);
-	return NULL;
+        // 메시지 본문 분리
+        strcpy(msg, space_ptr + 1);
+        msg[str_len] = '\0';
+
+        // 브로드캐스트 또는 유니캐스트 처리
+        if (msg[0] != '@') {
+            //브로드캐스트
+            send_msg_broadcast(name_msg, str_len);
+        } else {
+            //유니캐스트 //@target content 형태로 분리
+            char *delimeter = strchr(msg + 1, ' ');
+            if (delimeter == NULL) continue;
+            *delimeter = '\0';
+
+			strcpy(dest_name, msg+1);
+			snprintf(name_msg, NAME_SIZE+BUF_SIZE, "%s %s", sender_name, msg);
+			str_len = strlen(name_msg);
+
+            if (strcasecmp(dest_name, "all") == 0) {
+                send_msg_broadcast(name_msg, str_len);
+            } else {
+                int dest_sock = -1;
+                pthread_mutex_lock(&mutx);
+                for (int i = 0; i < clnt_cnt; i++) {
+                    if (strcmp(clnt_infos[i].name, dest_name) == 0) {
+                        dest_sock = clnt_infos[i].sock;
+                        break;
+                    }
+                }
+                pthread_mutex_unlock(&mutx);
+                if (dest_sock != -1) {
+                    send_msg_unicast(name_msg, str_len, dest_sock);
+                }
+            }
+        }
+    }
+
+    // 클라이언트 접속 종료 시 정리
+    pthread_mutex_lock(&mutx);
+    for (int i = 0; i < clnt_cnt; i++) {
+        if (clnt_infos[i].sock == clnt_sock) {
+            for (int j = i; j < clnt_cnt - 1; j++) {
+                clnt_infos[j] = clnt_infos[j + 1];
+            }
+            clnt_cnt--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&mutx);
+    close(clnt_sock);
+    return NULL;
 }
 void send_msg_unicast(char * msg, int len, int sock)   // send to some one
 {
