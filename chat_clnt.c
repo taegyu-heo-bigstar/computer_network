@@ -12,7 +12,6 @@
 void * send_msg(void * arg);
 void * recv_msg(void * arg);
 void error_handling(char * msg);
-int name_invalidity_check(int sock);
 	
 char name[NAME_SIZE]="[DEFAULT]";
 char msg[BUF_SIZE];
@@ -38,60 +37,42 @@ int main(int argc, char *argv[])
 	  
 	if(connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr))==-1)
 		error_handling("connect() error");
+
+	// 서버에 이름 전송 → 응답 받을 때까지 반복
+    char buf[BUF_SIZE];
+    while (1) {
+        write(sock, name, strlen(name));
+        int len = read(sock, buf, sizeof(buf)-1);
+        if (len <= 0) {
+            printf("서버 연결 실패\n");
+            return 1;
+        }
+        buf[len] = '\0';
+
+        if (strcmp(buf, "OK") == 0) {
+            break;  // 승인
+        } else if (strcmp(buf, "DUP") == 0) {
+            // 중복 통보
+            printf("이미 사용 중인 이름입니다. 새 이름을 입력하세요: ");
+            scanf("%17s", buf);            // 최대 NAME_SIZE-1 글자
+            snprintf(name, NAME_SIZE, "[%.17s]", buf);    // 다시 포맷
+        }
+    }
+	//
 	
-	printf("clnt start access invalidity checkllop");
-	while(1){
-		printf("clnt in check loop");
-		if (!(name_invalidity_check(sock))) break;	// **add** negative logic
-	}
-	
-	printf("clnt out loop");
 	pthread_create(&snd_thread, NULL, send_msg, (void*)&sock);
 	pthread_create(&rcv_thread, NULL, recv_msg, (void*)&sock);
-	printf("clnt sucees make thread");
 	pthread_join(snd_thread, &thread_return);
 	pthread_join(rcv_thread, &thread_return);
 	close(sock);  
 	return 0;
 }
-
-int name_invalidity_check(int sock){
-	write(sock, name, strlen(name));
-    
-    // 서버로부터 중복 여부 수신
-    char check_msg[BUF_SIZE];
-    int check_len = read(sock, check_msg, BUF_SIZE-1);
-    if(check_len <= 0) {
-        printf("diconnected from server...\n");
-        return 1;
-    }
-    check_msg[check_len] = 0;
-    
-    if(strcmp(check_msg, "OK") == 0) {
-        return 0;
-    }else if(strcmp(check_msg, "DUP") == 0) {
-		// 이름 중복
-		printf("이미 사용 중인 이름입니다. 새 이름을 입력하세요: ");
-		char new_name[NAME_SIZE]; 
-		fgets(new_name, sizeof(new_name), stdin);
-		new_name[strcspn(new_name, "\n")] = 0;
-
-		if(strlen(new_name) == 0) {
-			printf("이름을 입력하세요.\n");
-			return 1;
-		}
-
-		snprintf(name, sizeof(name), "[%.*s]", NAME_SIZE - 3, new_name);
-		return 1;
-	}else {
-        write(1, check_msg, check_len);
-        return 1;
-    }
-}
+	
 void * send_msg(void * arg)   // send thread main
 {
 	int sock=*((int*)arg);
 	char name_msg[NAME_SIZE+BUF_SIZE];
+
 	while(1) 
 	{
 		fgets(msg, BUF_SIZE, stdin);

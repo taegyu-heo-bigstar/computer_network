@@ -9,33 +9,31 @@
 
 #define BUF_SIZE 100
 #define MAX_CLNT 256
-#define NAME_SIZE 20	// **추가** 클라이언트가 가질 수 있는 이름의 최대 길이
+#define NAME_SIZE 20	//추가된 최대 이름 사이즈
 
 void * handle_clnt(void * arg);
 void send_msg(char * msg, int len);
 void error_handling(char * msg);
-
+//추가된 함수이름들
 void * handle_clnt_extend(void * arg);
-void * handle_connectionInfo(int sock);
 void send_msg_unicast(char * msg, int len, int sock);
-
-typedef struct client_information{
-	int sock;	// **추가** 클라이언트과 연결된 소켓의 파일 디스크립터(클라이언트 구분용)
-	char name[NAME_SIZE];	// **추가 클라이언트의 이름**
-} clnt_info;
+void send_msg_broadcast(char * msg, int len);
 
 int clnt_cnt=0;
-int clnt_socks[MAX_CLNT];
+//int clnt_socks[MAX_CLNT];	기존 소켓 파일 배열 대신 아래의 구조체 기반 배열 사용
+typedef struct {
+	int sock;
+	char name[NAME_SIZE];
+} clnt_info;
+clnt_info clnt_infos[MAX_CLNT];	//추가한 배열
+
 pthread_mutex_t mutx;
-clnt_info clnts[MAX_CLNT];	// **추가** 클라이언트의 정보를 저장하는 배열
 
 int main(int argc, char *argv[])
 {
 	int serv_sock, clnt_sock;
 	struct sockaddr_in serv_adr, clnt_adr;
 	int clnt_adr_sz;
-	char clnt_name[NAME_SIZE];
-	int* p_clnt_sock;
 	pthread_t t_id;
 	if(argc!=2) {
 		printf("Usage : %s <port>\n", argv[0]);
@@ -55,79 +53,83 @@ int main(int argc, char *argv[])
 	if(listen(serv_sock, 5)==-1)
 		error_handling("listen() error");
 	
+	//추가된 로직. <<사용자 구분용 이름 저장>>
 	while(1)
 	{
-		printf("server can access in loop");
-		clnt_adr_sz=sizeof(clnt_adr);
-		clnt_sock=accept(serv_sock, (struct sockaddr*)&clnt_adr, &clnt_adr_sz);
-		p_clnt_sock = malloc(sizeof(int));
-		*p_clnt_sock = clnt_sock;
-		printf("server success accept");
-		pthread_mutex_lock(&mutx);
-		handle_connectionInfo(*p_clnt_sock);
-		pthread_mutex_unlock(&mutx);
-	
-		pthread_create(&t_id, NULL, handle_clnt_extend, (void*)p_clnt_sock);
-		pthread_detach(t_id);
-		printf("Connected client IP: %s \n", inet_ntoa(clnt_adr.sin_addr));
-		printf("name: %s \n", clnt_name);
-	}
+    clnt_sock = accept(serv_sock, (struct sockaddr*)&clnt_adr, &clnt_adr_sz);
 
+    // 1) 클라이언트가 보낸 이름을 받을 버퍼
+    char name_buf[NAME_SIZE];
+    int  len;
+
+    // 2) 중복검사 반복
+    while (1) {
+        len = read(clnt_sock, name_buf, NAME_SIZE-1);
+        if (len <= 0) {
+            close(clnt_sock);	//clnt_infos에 저장하지 않았으니 바로 통신 종료 가능
+            goto CONTINUE_ACCEPT;	//오류시 다시 상단 accept으로 돌아감
+        }
+        name_buf[len] = '\0';
+
+        // 잠금 후 중복 검사
+        pthread_mutex_lock(&mutx);
+        int dup = 0;
+        for (int i = 0; i < clnt_cnt; i++) {
+            if (strcmp(clnt_infos[i].name, name_buf) == 0) {
+                dup = 1;
+                break;
+            }
+        }
+        if (!dup) {
+            // 중복 없으면 배열에 저장
+			clnt_infos[clnt_cnt].sock = clnt_sock;
+            strncpy(clnt_infos[clnt_cnt].name, name_buf, NAME_SIZE);
+            clnt_cnt++;
+            pthread_mutex_unlock(&mutx);
+
+            write(clnt_sock, "OK", 2);   // 클라이언트에 승인 통보
+            break;                       // 루프 탈출 → 스레드 생성
+        }
+        pthread_mutex_unlock(&mutx);
+
+        // 중복이면 클라이언트에 통보 후 재입력 대기
+        write(clnt_sock, "DUP", 3);
+    }
+
+    pthread_create(&t_id, NULL, handle_clnt, (void*)&clnt_sock);
+    pthread_detach(t_id);
+    printf("Connected: %s (%s)\n", name_buf, inet_ntoa(clnt_adr.sin_addr));
+		
+	CONTINUE_ACCEPT:
+    	;
+
+	}
 	close(serv_sock);
 	return 0;
 }
-// 추가 함수
-void * handle_connectionInfo(int sock){
-		int str_len = 0;
-		char name[NAME_SIZE];
 
-		clnt_socks[clnt_cnt]=sock;
-		int flag = 1;
-		while (flag){
-			printf("server can access in set info loop by flag");
-			if((str_len = read(sock, name, sizeof(name))) <= 0){
-				send_msg_unicast("unknown error", 5, sock);
-    			return NULL;
-			}
-			name[str_len]=0;
-
-			for (int i = 0; i < clnt_cnt; i++){
-				 if (strcmp(clnts[i].name, name) == 0) {
-					send_msg_unicast("DUP", 3, sock);
-					flag++; break;
-				}
-			}
-			flag--;
-		}
-	
-		strncpy(clnts[clnt_cnt].name, name, NAME_SIZE);
-		clnts[clnt_cnt].name[str_len] = '\0';
-		clnt_cnt++;
-		
-		send_msg_unicast("OK", 2, sock);
-}
-//추가로 만든 함수
+// ---**여기서 부터 추가로 만든 함수**---
 void * handle_clnt_extend(void * arg){
 	int clnt_sock=*((int*)arg);
 	int str_len=0, i;
 	char msg[BUF_SIZE];
 	char name[NAME_SIZE];
-	char * space_ptr = strchr(msg, ' ');
+	char name_msg[NAME_SIZE + BUF_SIZE];
+	char * space_ptr;
 	
-	free(arg);
-	printf("test1 meg");
-	while ((str_len=read(clnt_sock, msg, sizeof(msg)))!=0){
-		if (msg[0] != '@') send_msg(msg, str_len);	//만약 @안쓰면 브로드 캐스트
+	
+	while ((str_len=read(clnt_sock, name_msg, sizeof(name_msg)))!=0){
+		if (msg[0] != '@') send_msg_broadcast(name_msg, str_len);	//만약 @안쓰면 브로드 캐스트
 		else{									//@를 썼다면, name과 msg 분리
-			space_ptr = strchr(msg, ' ');
+			space_ptr = strchr(name_msg, ' ');
 			if (space_ptr == NULL){
 				strcpy(name, msg + 1);
 			}
 			else{
-				size_t name_len = space_ptr - msg;
+				size_t name_len = space_ptr - name_msg;
 				str_len -= name_len;
 
-				strncpy(name, msg, name_len);
+				strncpy(name, name_msg, name_len);
 				name[name_len] = '\0';
 
 				strncpy(msg, msg+name_len, str_len);
@@ -135,12 +137,12 @@ void * handle_clnt_extend(void * arg){
 		}
 
 		if (name == "all" || name == "ALL"){	//만약 name이 all이면 브로드캐스트
-			send_msg(msg, str_len);
+			send_msg_broadcast(msg, str_len);
 		}
 		else{
 			int dest;
 			for (int i = 0; i < clnt_cnt; i++){
-				if (clnts[i].name == name) {dest = clnts[i].sock; break;}
+				if (clnt_infos[i].name == name) {dest = clnt_infos[i].sock; break;}
 			}
 			send_msg_unicast(msg, str_len, dest);	//만약 name이 특정 이름이면 clnt에게 unicast
 		}
@@ -148,13 +150,12 @@ void * handle_clnt_extend(void * arg){
 	pthread_mutex_lock(&mutx);
 	for(i=0; i<clnt_cnt; i++)   // remove disconnected client
 	{
-		if(clnt_sock==clnt_socks[i])
+		if(clnt_sock==clnt_infos[i].sock)
 		{
 			while(i <clnt_cnt-1)
 			{
-				clnt_socks[i]=clnt_socks[i+1];
-				  i++;
-
+				clnt_infos[i]=clnt_infos[i+1];
+				i++;
 			}
 
 			break;
@@ -165,6 +166,21 @@ void * handle_clnt_extend(void * arg){
 	close(clnt_sock);
 	return NULL;
 }
+void send_msg_unicast(char * msg, int len, int sock)   // send to some one
+{
+	pthread_mutex_lock(&mutx);
+	write(sock, msg, len);
+	pthread_mutex_unlock(&mutx);
+}
+void send_msg_broadcast(char * msg, int len)   // send to some one
+{
+	int i;
+	pthread_mutex_lock(&mutx);
+	for(i=0; i<clnt_cnt; i++)
+		write(clnt_infos[i].sock, msg, len);
+	pthread_mutex_unlock(&mutx);
+}
+// ---**여기까지 추가된 함수**---
 void * handle_clnt(void * arg)
 {
 	int clnt_sock=*((int*)arg);
@@ -177,11 +193,11 @@ void * handle_clnt(void * arg)
 	pthread_mutex_lock(&mutx);
 	for(i=0; i<clnt_cnt; i++)   // remove disconnected client
 	{
-		if(clnt_sock==clnt_socks[i])
+		if(clnt_sock==clnt_infos[i].sock)
 		{
 			while(i <clnt_cnt-1)
 			{
-				clnt_socks[i]=clnt_socks[i+1];
+				clnt_infos[i]=clnt_infos[i+1];	//clnt_socks를 사용하지 않음으로 이부분만 수정
 				  i++;
 
 			}
@@ -199,13 +215,7 @@ void send_msg(char * msg, int len)   // send to all
 	int i;
 	pthread_mutex_lock(&mutx);
 	for(i=0; i<clnt_cnt; i++)
-		write(clnt_socks[i], msg, len);
-	pthread_mutex_unlock(&mutx);
-}
-void send_msg_unicast(char * msg, int len, int sock)   // send to some one
-{
-	pthread_mutex_lock(&mutx);
-	write(sock, msg, len);
+		write(clnt_infos[i].sock, msg, len);//clnt_socks를 사용하지 않음으로 이부분만 수정
 	pthread_mutex_unlock(&mutx);
 }
 void error_handling(char * msg)
