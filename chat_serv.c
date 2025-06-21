@@ -153,22 +153,25 @@ void *handle_clnt_extend(void *arg) {
 			str_len = strlen(name_msg);
 
             if (strcasecmp(dest_name, "all") == 0) {
+                write(1, "test4", 5);
                 send_msg_broadcast(name_msg, str_len);
             } else {
                 int dest_sock = -1;
                 pthread_mutex_lock(&mutx);
                 for (int i = 0; i < clnt_cnt; i++) {
                     if (strcmp(clnt_infos[i].name, dest_name) == 0) {
-                        write(1, clnt_infos[i].name, strlen(clnt_infos[i].name));
+                        write(1, "test5", 5);
                         dest_sock = clnt_infos[i].sock;
                         break;
                     }
                 }
                 pthread_mutex_unlock(&mutx);
                 if (dest_sock != -1) {
+                    write(1, "test6", 5);
                     send_msg_unicast(name_msg, str_len, dest_sock);
                 }
             }
+            write(1, "test7", 5);
         }
     }
 
