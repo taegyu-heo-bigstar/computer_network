@@ -130,11 +130,14 @@ void *handle_clnt_extend(void *arg) {
         // 메시지 본문 분리
         strcpy(msg, space_ptr + 1);
         
+        printf("%s send a message", sender_name);
         // 브로드캐스트 또는 유니캐스트 처리
         if (msg[0] != '@') {
             //브로드캐스트
+            printf("broadcast");
             send_msg_broadcast(name_msg, str_len);
         } else {
+            printf("unicast");
             //유니캐스트 //@target content 형태로 분리
             char *delimeter = strchr(msg + 1, ' ');
             if (delimeter == NULL) continue;
