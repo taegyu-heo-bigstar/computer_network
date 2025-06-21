@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
 {
 	int serv_sock, clnt_sock;
 	struct sockaddr_in serv_adr, clnt_adr;
-	int clnt_adr_sz = sizeof(clnt_adr);
+	int clnt_adr_sz = sizeof(clnt_adr); //init size
 	pthread_t t_id;
 	if(argc!=2) {
 		printf("Usage : %s <port>\n", argv[0]);
@@ -96,7 +96,7 @@ int main(int argc, char *argv[])
         write(clnt_sock, "DUP", 3);
     }
 
-    pthread_create(&t_id, NULL, handle_clnt, (void*)&clnt_sock);
+    pthread_create(&t_id, NULL, handle_clnt_extend, (void*)&clnt_sock);
     pthread_detach(t_id);
     printf("Connected: %s (%s)\n", name_buf, inet_ntoa(clnt_adr.sin_addr));
 		
