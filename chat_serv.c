@@ -129,8 +129,7 @@ void *handle_clnt_extend(void *arg) {
 
         // 메시지 본문 분리
         strcpy(msg, space_ptr + 1);
-        msg[str_len] = '\0';
-
+        
         // 브로드캐스트 또는 유니캐스트 처리
         if (msg[0] != '@') {
             //브로드캐스트
