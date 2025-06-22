@@ -69,8 +69,8 @@ int main(int argc, char *argv[])
             close(clnt_sock);	//clnt_infos에 저장하지 않았으니 바로 통신 종료 가능
             goto CONTINUE_ACCEPT;	//오류시 다시 상단 accept으로 돌아감
         }
-        memmove(name_buf, name_buf+1, len-1);
-        name_buf[len] = '\0';
+        memmove(name_buf, name_buf+1, len-2);
+        name_buf[len-2] = '\0';
 
         // 잠금 후 중복 검사
         pthread_mutex_lock(&mutx);
@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
 
     pthread_create(&t_id, NULL, handle_clnt_extend, (void*)&clnt_sock);
     pthread_detach(t_id);
-    printf("Connected: %s (%s)\n", name_buf, inet_ntoa(clnt_adr.sin_addr));
+    printf("Connected: [%s] (%s)\n", name_buf, inet_ntoa(clnt_adr.sin_addr));
 		
 	CONTINUE_ACCEPT:
     	;
