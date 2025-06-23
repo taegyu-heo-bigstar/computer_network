@@ -72,8 +72,8 @@ int main(int argc, char *argv[])
                 close(clnt_sock);	//clnt_infos에 저장하지 않았으니 바로 통신 종료 가능
                 goto CONTINUE_ACCEPT;	//오류시 다시 상단 accept으로 돌아감
             }
-            memmove(name_buf, name_buf+1, len-2);
-            name_buf[len-2] = '\0';
+            memmove(name_buf, name_buf+1, len-2);	//이름 저장시 양단에 '[', ']'를 제거
+            name_buf[len-2] = '\0';	//제거한 부분에 맞추어 널문자 삽입입
 
             // 잠금 후 중복 검사
             pthread_mutex_lock(&mutx);
@@ -139,11 +139,9 @@ void *handle_clnt_extend(void *arg) {
         if (msg[0] != '@') {
             //브로드캐스트
             //printf("broadcast");
-            write(1, "test2", 5);
             send_msg_broadcast(name_msg, str_len);
         } else {
             //printf("unicast");
-            write(1, "test3", 5);
             //유니캐스트 //@target content 형태로 분리
             char *delimeter = strchr(msg + 1, ' ');
             if (delimeter == NULL) continue;
@@ -154,25 +152,21 @@ void *handle_clnt_extend(void *arg) {
 			str_len = strlen(name_msg);
 
             if (strcasecmp(dest_name, "all") == 0) {
-                write(1, "test4", 5);
                 send_msg_broadcast(name_msg, str_len);
             } else {
                 int dest_sock = -1;
                 pthread_mutex_lock(&mutx);
                 for (int i = 0; i < clnt_cnt; i++) {
                     if (strcmp(clnt_infos[i].name, dest_name) == 0) {
-                        write(1, "test5", 5);
                         dest_sock = clnt_infos[i].sock;
                         break;
                     }
                 }
                 pthread_mutex_unlock(&mutx);
                 if (dest_sock != -1) {
-                    write(1, "test6", 5);
                     send_msg_unicast(name_msg, str_len, dest_sock);
                 }
             }
-            write(1, "test7", 5);
         }
     }
 
