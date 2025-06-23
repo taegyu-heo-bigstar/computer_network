@@ -6,6 +6,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <time.h>
+#include <stdbool.h>
+#include <netinet/in.h> 
 
 #define BUF_SIZE 100
 #define MAX_CLNT 256
@@ -55,56 +58,55 @@ int main(int argc, char *argv[])
 	
 	//추가된 로직. <<사용자 구분용 이름 저장>>
 	while(1)
-	{
-    clnt_sock = accept(serv_sock, (struct sockaddr*)&clnt_adr, &clnt_adr_sz);
+    {
+        clnt_sock = accept(serv_sock, (struct sockaddr*)&clnt_adr, &clnt_adr_sz);
 
-    // 1) 클라이언트가 보낸 이름을 받을 버퍼
-    char name_buf[NAME_SIZE];
-    int  len;
+        // 1) 클라이언트가 보낸 이름을 받을 버퍼
+        char name_buf[NAME_SIZE];
+        int  len;
 
-    // 2) 중복검사 반복
-    while (1) {
-        len = read(clnt_sock, name_buf, NAME_SIZE-1);
-        if (len <= 0) {
-            close(clnt_sock);	//clnt_infos에 저장하지 않았으니 바로 통신 종료 가능
-            goto CONTINUE_ACCEPT;	//오류시 다시 상단 accept으로 돌아감
-        }
-        memmove(name_buf, name_buf+1, len-2);
-        name_buf[len-2] = '\0';
-
-        // 잠금 후 중복 검사
-        pthread_mutex_lock(&mutx);
-        int dup = 0;
-        for (int i = 0; i < clnt_cnt; i++) {
-            if (strcmp(clnt_infos[i].name, name_buf) == 0) {
-                dup = 1;
-                break;
+        // 2) 중복검사 반복
+        while (1) {
+            len = read(clnt_sock, name_buf, NAME_SIZE-1);
+            if (len <= 0) {
+                close(clnt_sock);	//clnt_infos에 저장하지 않았으니 바로 통신 종료 가능
+                goto CONTINUE_ACCEPT;	//오류시 다시 상단 accept으로 돌아감
             }
-        }
-        if (!dup) {
-            // 중복 없으면 배열에 저장
-			clnt_infos[clnt_cnt].sock = clnt_sock;
-            strcpy(clnt_infos[clnt_cnt].name, name_buf);
-            clnt_cnt++;
+            memmove(name_buf, name_buf+1, len-2);
+            name_buf[len-2] = '\0';
+
+            // 잠금 후 중복 검사
+            pthread_mutex_lock(&mutx);
+            int dup = 0;
+            for (int i = 0; i < clnt_cnt; i++) {
+                if (strcmp(clnt_infos[i].name, name_buf) == 0) {
+                    dup = 1;
+                    break;
+                }
+            }
+            if (!dup) {
+                // 중복 없으면 배열에 저장
+                clnt_infos[clnt_cnt].sock = clnt_sock;
+                strcpy(clnt_infos[clnt_cnt].name, name_buf);
+                clnt_cnt++;
+                pthread_mutex_unlock(&mutx);
+
+                write(clnt_sock, "OK", 2);   // 클라이언트에 승인 통보
+                break;                       // 루프 탈출 → 스레드 생성
+            }
             pthread_mutex_unlock(&mutx);
 
-            write(clnt_sock, "OK", 2);   // 클라이언트에 승인 통보
-            break;                       // 루프 탈출 → 스레드 생성
+            // 중복이면 클라이언트에 통보 후 재입력 대기
+            write(clnt_sock, "DUP", 3);
         }
-        pthread_mutex_unlock(&mutx);
 
-        // 중복이면 클라이언트에 통보 후 재입력 대기
-        write(clnt_sock, "DUP", 3);
+        pthread_create(&t_id, NULL, handle_clnt_extend, (void*)&clnt_sock);
+        pthread_detach(t_id);
+        printf("Connected: [%s] (%s)\n", name_buf, inet_ntoa(clnt_adr.sin_addr));
+            
+        CONTINUE_ACCEPT:
+            ;
     }
-
-    pthread_create(&t_id, NULL, handle_clnt_extend, (void*)&clnt_sock);
-    pthread_detach(t_id);
-    printf("Connected: [%s] (%s)\n", name_buf, inet_ntoa(clnt_adr.sin_addr));
-		
-	CONTINUE_ACCEPT:
-    	;
-
-	}
 	close(serv_sock);
 	return 0;
 }
@@ -133,8 +135,6 @@ void *handle_clnt_extend(void *arg) {
         
         *space_ptr = ' ';
 
-        //printf("%s send a message", sender_name);
-        write(1, "test1", 5);
         // 브로드캐스트 또는 유니캐스트 처리
         if (msg[0] != '@') {
             //브로드캐스트
